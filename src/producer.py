@@ -31,9 +31,25 @@ def main():
     parser.add_argument("--count", type=int, default=3, help="number of events to generate")
     args = parser.parse_args()
 
+    # ensure data folder exists
+    import os
+    os.makedirs("data", exist_ok=True)
+
+    log_file = "data/orders_log.jsonl"
+
     for _ in range(args.count):
         evt = make_order_event()
-        print(json.dumps(evt, default=str))
+        line = json.dumps(evt, default=str)
+
+        # print to stdout
+        print(line)
+
+        # append to log file
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+    print(f"Wrote {args.count} events to {log_file}")
+
 
 if __name__ == "__main__":
     main()
