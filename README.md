@@ -1,6 +1,7 @@
-# StreamCart Realtime — Day 1 (Professional Minimal)
+# StreamCart Realtime 
 
-A clean foundation for a streaming e‑commerce pipeline. Today’s version focuses on **data modeling** and **event simulation** without external systems yet.
+A project that simulates a real-time e-commerce data pipeline.  
+
 
 ## Run locally
 ```bash
