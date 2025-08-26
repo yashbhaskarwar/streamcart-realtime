@@ -14,9 +14,7 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Generate a few events
-python src/producer.py --count 5
+python -m src.producer --count 5
 
-# Validate a sample event with the consumer stub
-python src/consumer.py --sample
-```
-
+# Validate events from the log file
+python -m src.consumer --file data/orders_log.jsonl
