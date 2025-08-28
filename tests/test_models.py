@@ -45,3 +45,20 @@ def test_negative_amount_raises_error():
             items_count=1,
         )
 
+def test_invalid_currency_raises_error():
+    import pytest
+    from datetime import datetime, timezone
+    from src.common.models import OrderEvent
+
+    with pytest.raises(Exception):
+        OrderEvent(
+            event_type="order_created",
+            event_ts=datetime.now(timezone.utc),
+            order_id="ord_777",
+            customer_id="cus_777",
+            status="PLACED",
+            amount=25.0,
+            currency="XYZ",  # invalid
+            items_count=1,
+        )
+
