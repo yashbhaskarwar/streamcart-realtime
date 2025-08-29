@@ -49,7 +49,8 @@ def main():
         raise SystemExit(1)
 
     ok, err = validate_file(path)
-    print(f"Validation summary → OK: {ok}, ERRORS: {err}")
+    print(f"✅ {ok} events valid | ❌ {err} errors")
+
 
 
 if __name__ == "__main__":
