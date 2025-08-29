@@ -7,6 +7,19 @@ from typing import Tuple
 
 from src.common.models import OrderEvent
 
+DDL = """
+CREATE TABLE orders_events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT,
+    event_ts TIMESTAMPTZ,
+    order_id TEXT,
+    customer_id TEXT,
+    status TEXT,
+    amount NUMERIC,
+    currency TEXT,
+    items_count INT
+);
+"""
 
 def validate_event(payload: dict) -> OrderEvent:
     """Validate a single event against the OrderEvent schema."""
@@ -41,7 +54,16 @@ def main():
         default="data/orders_log.jsonl",
         help="Path to a JSONL file of events (default: data/orders_log.jsonl)",
     )
+    parser.add_argument(
+        "--show-schema",
+        action="store_true",
+        help="Print the SQL schema for the orders_events table",
+    )
     args = parser.parse_args()
+
+    if args.show_schema:
+        print(DDL.strip())
+        raise SystemExit(0)
 
     path = Path(args.file)
     if not path.exists():
@@ -50,7 +72,6 @@ def main():
 
     ok, err = validate_file(path)
     print(f"✅ {ok} events valid | ❌ {err} errors")
-
 
 
 if __name__ == "__main__":
