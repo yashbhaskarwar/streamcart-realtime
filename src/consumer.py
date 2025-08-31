@@ -66,9 +66,8 @@ def main():
         raise SystemExit(0)
 
     path = Path(args.file)
-    if not path.exists():
-        print(f"File not found: {path}")
-        raise SystemExit(1)
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
 
     ok, err = validate_file(path)
     print(f"✅ {ok} events valid | ❌ {err} errors")
