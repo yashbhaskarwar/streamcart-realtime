@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Tuple
 
@@ -40,7 +41,7 @@ def validate_file(path: Path) -> Tuple[int, int]:
                 ok += 1
             except Exception as e:
                 err += 1
-                print(f"[line {i}] invalid event: {e}")
+                sys.stderr.write(f"[line {i}] invalid event: {e}\n")
     return ok, err
 
 

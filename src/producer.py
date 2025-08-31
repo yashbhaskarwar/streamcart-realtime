@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, random, argparse
+import json, random, argparse, uuid
 from datetime import datetime, timezone
 from faker import Faker
 from src.common.models import OrderEvent
@@ -7,12 +7,12 @@ from src.common.models import OrderEvent
 fake = Faker()
 
 def make_order_event() -> dict:
-    order_id = f"ord_{fake.random_number(digits=6)}"
+    order_id = f"ord_{uuid.uuid4().hex[:8]}"
     customer_id = f"cus_{fake.random_number(digits=4)}"
     status = random.choice(["PLACED","CONFIRMED","SHIPPED","DELIVERED"])
     evt_type = random.choice(["order_created","order_updated"])
     amount = round(random.uniform(5, 500), 2)
-    currency = random.choice(["USD","EUR","GBP","INR"])
+    currency = random.choice(["USD","EUR","GBP","INR"]) or "USD"
     items = random.randint(1, 5)
     evt = OrderEvent(
         event_type=evt_type,
