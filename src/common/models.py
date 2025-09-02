@@ -2,6 +2,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Literal
+from decimal import Decimal
 import uuid
 
 OrderStatus = Literal["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]
@@ -13,7 +14,7 @@ class OrderEvent(BaseModel):
     order_id: str
     customer_id: str
     status: OrderStatus
-    amount: float
+    amount: Decimal
     currency: Literal["USD","EUR","GBP","INR"]
     items_count: int
 
@@ -30,3 +31,7 @@ class OrderEvent(BaseModel):
         if v <= 0:
             raise ValueError("items_count must be >= 1")
         return v
+    
+    def __str__(self) -> str:
+        return f"Order {self.order_id} [{self.status}] {self.currency} {self.amount}"
+

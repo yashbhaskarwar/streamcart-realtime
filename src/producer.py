@@ -3,6 +3,7 @@ import json, random, argparse, uuid
 from datetime import datetime, timezone
 from faker import Faker
 from src.common.models import OrderEvent
+from decimal import Decimal
 
 fake = Faker()
 
@@ -11,7 +12,7 @@ def make_order_event() -> dict:
     customer_id = f"cus_{fake.random_number(digits=4)}"
     status = random.choice(["PLACED","CONFIRMED","SHIPPED","DELIVERED"])
     evt_type = random.choice(["order_created","order_updated"])
-    amount = round(random.uniform(5, 500), 2)
+    amount = Decimal(str(round(random.uniform(5, 500), 2)))
     currency = random.choice(["USD","EUR","GBP","INR"]) or "USD"
     items = random.randint(1, 5)
     evt = OrderEvent(
