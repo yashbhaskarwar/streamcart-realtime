@@ -21,3 +21,10 @@ python -m src.consumer --file data/orders_log.jsonl
 
 ## Run tests
 pytest -q
+
+# Postgres client required
+pip install psycopg2-binary
+
+# Validate and insert to Postgres
+python -m src.consumer --file data/orders_log.jsonl --to-postgres
+
