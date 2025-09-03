@@ -2,53 +2,107 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
-from typing import Tuple
+from decimal import Decimal  # if amounts are Decimal in your model
+import psycopg2
 
 from src.common.models import OrderEvent
 
+# -Postgres Configuration
+PG_HOST = os.getenv("PG_HOST", "localhost")
+PG_PORT = int(os.getenv("PG_PORT", "5432"))
+PG_USER = os.getenv("PG_USER", "postgres")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "postgres")
+PG_DB = os.getenv("PG_DB", "postgres")
+
 DDL = """
-CREATE TABLE orders_events (
+CREATE TABLE IF NOT EXISTS orders_events (
     event_id TEXT PRIMARY KEY,
-    event_type TEXT,
-    event_ts TIMESTAMPTZ,
-    order_id TEXT,
-    customer_id TEXT,
-    status TEXT,
-    amount NUMERIC,
-    currency TEXT,
-    items_count INT
+    event_type TEXT NOT NULL,
+    event_ts TIMESTAMPTZ NOT NULL,
+    order_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    amount NUMERIC(10,2) NOT NULL,
+    currency TEXT NOT NULL,
+    items_count INT NOT NULL
 );
 """
 
+UPSERT = """
+INSERT INTO orders_events (
+    event_id, event_type, event_ts, order_id, customer_id, status, amount, currency, items_count
+) VALUES (
+    %(event_id)s, %(event_type)s, %(event_ts)s, %(order_id)s, %(customer_id)s, %(status)s, %(amount)s, %(currency)s, %(items_count)s
+)
+ON CONFLICT (event_id) DO NOTHING;
+"""
+
+
+def pg_connect():
+    return psycopg2.connect(
+        host=PG_HOST, port=PG_PORT, user=PG_USER, password=PG_PASSWORD, dbname=PG_DB
+    )
+
+
+def ensure_db(conn) -> None:
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(DDL)
+
+
 def validate_event(payload: dict) -> OrderEvent:
-    """Validate a single event against the OrderEvent schema."""
     return OrderEvent(**payload)
 
 
-def validate_file(path: Path) -> Tuple[int, int]:
-    """Validate all JSONL events in a file. Returns (ok_count, err_count)."""
+def _to_db_dict(evt: OrderEvent) -> dict:
+    d = evt.model_dump()
+    if isinstance(d.get("amount"), str):
+        d["amount"] = Decimal(d["amount"])
+    return d
+
+
+def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int]:
+    """Validate all JSONL events in a file. Optionally insert into Postgres."""
     ok, err = 0, 0
-    with path.open("r", encoding="utf-8") as f:
-        for i, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                payload = json.loads(line)
-                _ = validate_event(payload)
-                ok += 1
-            except Exception as e:
-                err += 1
-                sys.stderr.write(f"[line {i}] invalid event: {e}\n")
+    conn = None
+    cur = None
+    try:
+        if to_postgres:
+            conn = pg_connect()
+            ensure_db(conn)
+            cur = conn.cursor()
+
+        with path.open("r", encoding="utf-8") as f:
+            for i, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                    evt = validate_event(payload)
+                    ok += 1
+                    if to_postgres:
+                        cur.execute(UPSERT, _to_db_dict(evt))
+                except Exception as e:
+                    err += 1
+                    sys.stderr.write(f"[line {i}] invalid event: {e}\n")
+
+        if to_postgres and conn:
+            conn.commit()
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
     return ok, err
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate JSONL order events from a file."
-    )
+    parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
     parser.add_argument(
         "--file",
         type=str,
@@ -60,6 +114,11 @@ def main():
         action="store_true",
         help="Print the SQL schema for the orders_events table",
     )
+    parser.add_argument(
+        "--to-postgres",
+        action="store_true",
+        help="If set, insert valid events into Postgres after validation",
+    )
     args = parser.parse_args()
 
     if args.show_schema:
@@ -70,9 +129,7 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err = validate_file(path)
+    ok, err = validate_file(path, to_postgres=args.to_postgres)
     print(f"✅ {ok} events valid | ❌ {err} errors")
-
-
-if __name__ == "__main__":
-    main()
+    if args.to_postgres:
+        print("📦 Inserted valid events into Postgres.")
