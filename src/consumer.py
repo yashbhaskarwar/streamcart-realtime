@@ -5,12 +5,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from decimal import Decimal  # if amounts are Decimal in your model
+from decimal import Decimal 
 import psycopg2
 
 from src.common.models import OrderEvent
 
-# -Postgres Configuration
+# Postgres Configuration
 PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_USER = os.getenv("PG_USER", "postgres")
