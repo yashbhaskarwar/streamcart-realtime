@@ -9,6 +9,7 @@ from decimal import Decimal
 import psycopg2
 
 from src.common.models import OrderEvent
+from collections import Counter
 
 # Postgres Configuration
 PG_HOST = os.getenv("PG_HOST", "localhost")
@@ -67,6 +68,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
+    status_counts = Counter()
     conn = None
     cur = None
     try:
@@ -84,9 +86,10 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
                     payload = json.loads(line)
                     evt = validate_event(payload)
                     ok += 1
-                    # sum amounts (evt.amount may be str if serialized—normalize)
+                    # sum amounts 
                     amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
                     total += amt
+                    status_counts[evt.status] += 1
                     if to_postgres:
                         cur.execute(UPSERT, _to_db_dict(evt))
                 except Exception as e:
@@ -101,7 +104,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
         if conn:
             conn.close()
 
-    return ok, err, total
+    return ok, err, total, status_counts
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -131,8 +134,11 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total = validate_file(path, to_postgres=args.to_postgres)
+    ok, err, total, status_counts = validate_file(path, to_postgres=args.to_postgres)
     print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total}")
+    if status_counts:
+        status_str = " | ".join(f"{k}: {v}" for k, v in status_counts.items())
+        print(f"Status counts → {status_str}")
     if args.to_postgres:
         print("📦 Inserted valid events into Postgres.")
 
