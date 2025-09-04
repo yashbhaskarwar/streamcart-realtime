@@ -63,10 +63,10 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-
-def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int]:
-    """Validate all JSONL events in a file. Optionally insert into Postgres."""
+def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Decimal]:
+    """Validate all JSONL events"""
     ok, err = 0, 0
+    total = Decimal("0")
     conn = None
     cur = None
     try:
@@ -84,6 +84,9 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int]:
                     payload = json.loads(line)
                     evt = validate_event(payload)
                     ok += 1
+                    # sum amounts (evt.amount may be str if serialized—normalize)
+                    amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
+                    total += amt
                     if to_postgres:
                         cur.execute(UPSERT, _to_db_dict(evt))
                 except Exception as e:
@@ -98,8 +101,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int]:
         if conn:
             conn.close()
 
-    return ok, err
-
+    return ok, err, total
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -129,7 +131,14 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err = validate_file(path, to_postgres=args.to_postgres)
-    print(f"✅ {ok} events valid | ❌ {err} errors")
+    ok, err, total = validate_file(path, to_postgres=args.to_postgres)
+    print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total}")
     if args.to_postgres:
         print("📦 Inserted valid events into Postgres.")
+
+if __name__ == "__main__":
+        main()
+        
+
+
+
