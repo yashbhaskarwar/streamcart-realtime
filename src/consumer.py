@@ -135,7 +135,8 @@ def main():
         raise FileNotFoundError(f"File not found: {path}")
 
     ok, err, total, status_counts = validate_file(path, to_postgres=args.to_postgres)
-    print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total}")
+    avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
+    print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
     if status_counts:
         status_str = " | ".join(f"{k}: {v}" for k, v in status_counts.items())
         print(f"Status counts → {status_str}")
