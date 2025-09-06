@@ -69,6 +69,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
     ok, err = 0, 0
     total = Decimal("0")
     status_counts = Counter()
+    type_counts = Counter()
     conn = None
     cur = None
     try:
@@ -90,6 +91,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
                     amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
                     total += amt
                     status_counts[evt.status] += 1
+                    type_counts[evt.event_type] += 1
                     if to_postgres:
                         cur.execute(UPSERT, _to_db_dict(evt))
                 except Exception as e:
@@ -104,7 +106,7 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
         if conn:
             conn.close()
 
-    return ok, err, total, status_counts
+    return ok, err, total, status_counts, type_counts
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -134,12 +136,15 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts = validate_file(path, to_postgres=args.to_postgres)
+    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres)
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
     if status_counts:
         status_str = " | ".join(f"{k}: {v}" for k, v in status_counts.items())
         print(f"Status counts → {status_str}")
+    if type_counts:
+        type_str = " | ".join(f"{k}: {v}" for k, v in type_counts.items())
+        print(f"Event types → {type_str}")
     if args.to_postgres:
         print("📦 Inserted valid events into Postgres.")
 
