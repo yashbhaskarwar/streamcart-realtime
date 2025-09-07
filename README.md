@@ -1,6 +1,11 @@
-# StreamCart Realtime 
+# StreamCart Realtime (In Progress)
 
 A project that simulates a real-time e-commerce data pipeline.  
+
+Status
+Producer generates and logs fake e-commerce order events  
+Consumer validates events, prints totals, averages, status and event type counts  
+Postgres integration for storing validated events  (optional for now)
 
 
 ## Run locally
