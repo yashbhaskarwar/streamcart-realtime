@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from decimal import Decimal 
 import psycopg2
+import csv
 
 from src.common.models import OrderEvent
 from collections import Counter
@@ -64,12 +65,14 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Decimal]:
+
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False) -> tuple[int, int, Decimal, Counter, Counter]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
     status_counts = Counter()
     type_counts = Counter()
+    rows: list[dict] = []
     conn = None
     cur = None
     try:
@@ -92,6 +95,10 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
                     total += amt
                     status_counts[evt.status] += 1
                     type_counts[evt.event_type] += 1
+                    d = evt.model_dump()
+                    if isinstance(d.get("amount"), Decimal):
+                        d["amount"] = str(d["amount"])
+                    rows.append(d)
                     if to_postgres:
                         cur.execute(UPSERT, _to_db_dict(evt))
                 except Exception as e:
@@ -105,6 +112,16 @@ def validate_file(path: Path, to_postgres: bool = False) -> tuple[int, int, Deci
             cur.close()
         if conn:
             conn.close()
+
+    if to_csv:
+        out = Path("data/validated_orders.csv")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if rows:
+            fieldnames = list(rows[0].keys())
+            with out.open("w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fieldnames)
+                w.writeheader()
+                w.writerows(rows)
 
     return ok, err, total, status_counts, type_counts
 
@@ -126,6 +143,12 @@ def main():
         action="store_true",
         help="If set, insert valid events into Postgres after validation",
     )
+    parser.add_argument(
+    "--to-csv",
+    action="store_true",
+    help="If set, export valid events to data/validated_orders.csv",
+    )
+
     args = parser.parse_args()
 
     if args.show_schema:
@@ -136,7 +159,7 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres)
+    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres, to_csv=args.to_csv)
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
     if status_counts:
@@ -147,6 +170,8 @@ def main():
         print(f"Event types → {type_str}")
     if args.to_postgres:
         print("📦 Inserted valid events into Postgres.")
+    if args.to_csv:
+        print("📝 Wrote CSV to data/validated_orders.csv")
 
 if __name__ == "__main__":
         main()
