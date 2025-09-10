@@ -8,9 +8,15 @@ from pathlib import Path
 from decimal import Decimal 
 import psycopg2
 import csv
+import logging
 
 from src.common.models import OrderEvent
 from collections import Counter
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 # Postgres Configuration
 PG_HOST = os.getenv("PG_HOST", "localhost")
@@ -103,7 +109,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False) -
                         cur.execute(UPSERT, _to_db_dict(evt))
                 except Exception as e:
                     err += 1
-                    sys.stderr.write(f"[line {i}] invalid event: {e}\n")
+                    logging.error(f"[line {i}] invalid event: {e}")
 
         if to_postgres and conn:
             conn.commit()
@@ -161,17 +167,15 @@ def main():
 
     ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres, to_csv=args.to_csv)
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
-    print(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
+    logging.info(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
     if status_counts:
-        status_str = " | ".join(f"{k}: {v}" for k, v in status_counts.items())
-        print(f"Status counts → {status_str}")
+        logging.info("Status counts → " + " | ".join(f"{k}: {v}" for k, v in status_counts.items()))
     if type_counts:
-        type_str = " | ".join(f"{k}: {v}" for k, v in type_counts.items())
-        print(f"Event types → {type_str}")
+        logging.info("Event types → " + " | ".join(f"{k}: {v}" for k, v in type_counts.items()))
     if args.to_postgres:
-        print("📦 Inserted valid events into Postgres.")
+        logging.info("📦 Inserted valid events into Postgres.")
     if args.to_csv:
-        print("📝 Wrote CSV to data/validated_orders.csv")
+        logging.info("📝 Wrote CSV to data/validated_orders.csv")
 
 if __name__ == "__main__":
         main()
