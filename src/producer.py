@@ -30,8 +30,13 @@ def make_order_event() -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Generate fake order events")
     parser.add_argument("--count", type=int, default=3, help="number of events to generate")
+    parser.add_argument("--seed", type=int, help="random seed for reproducible events") # For reproducible output
     args = parser.parse_args()
 
+    if args.seed is not None:
+        random.seed(args.seed)
+        Faker.seed(args.seed)
+        
     # ensure data folder exists
     import os
     os.makedirs("data", exist_ok=True)
