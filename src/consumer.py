@@ -71,8 +71,7 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False) -> tuple[int, int, Decimal, Counter, Counter]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: str | None = None) -> tuple[int, int, Decimal, Counter, Counter]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -95,6 +94,8 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False) -
                 try:
                     payload = json.loads(line)
                     evt = validate_event(payload)
+                    if status_filter and evt.status != status_filter:
+                        continue
                     ok += 1
                     # sum amounts 
                     amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
@@ -154,6 +155,12 @@ def main():
     action="store_true",
     help="If set, export valid events to data/validated_orders.csv",
     )
+    parser.add_argument(
+    "--status",
+    type=str,
+    choices=["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"],
+    help="Only include events with this status in the summary/outputs",
+)
 
     args = parser.parse_args()
 
@@ -165,9 +172,10 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres, to_csv=args.to_csv)
+    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=args.status)
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
-    logging.info(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}")
+    label = f" (status={args.status})" if args.status else ""
+    logging.info(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}{label}")
     if status_counts:
         logging.info("Status counts → " + " | ".join(f"{k}: {v}" for k, v in status_counts.items()))
     if type_counts:
