@@ -12,6 +12,7 @@ import logging
 
 from src.common.models import OrderEvent
 from collections import Counter
+from typing import Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +72,7 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: str | None = None) -> tuple[int, int, Decimal, Counter, Counter]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None,) -> tuple[int, int, Decimal, Counter, Counter]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -94,7 +95,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 try:
                     payload = json.loads(line)
                     evt = validate_event(payload)
-                    if status_filter and evt.status != status_filter:
+                    if status_filter and evt.status not in status_filter:
                         continue
                     ok += 1
                     # sum amounts 
@@ -158,11 +159,20 @@ def main():
     parser.add_argument(
     "--status",
     type=str,
-    choices=["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"],
-    help="Only include events with this status in the summary/outputs",
-)
+    help="Comma-separated statuses to include (e.g. DELIVERED,SHIPPED). "
+         "Allowed: PLACED,CONFIRMED,SHIPPED,DELIVERED,CANCELLED",
+   )
 
     args = parser.parse_args()
+
+    allowed_statuses = {"PLACED","CONFIRMED","SHIPPED","DELIVERED","CANCELLED"}
+    status_filter: set[str] | None = None
+    if args.status:
+        chosen = {s.strip().upper() for s in args.status.split(",") if s.strip()}
+        invalid = chosen - allowed_statuses
+        if invalid:
+            raise ValueError(f"Invalid statuses: {sorted(invalid)}. Allowed: {sorted(allowed_statuses)}")
+        status_filter = chosen
 
     if args.show_schema:
         print(DDL.strip())
@@ -172,9 +182,11 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts = validate_file(path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=args.status)
+    ok, err, total, status_counts, type_counts = validate_file(
+    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter
+    )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
-    label = f" (status={args.status})" if args.status else ""
+    label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
     logging.info(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}{label}")
     if status_counts:
         logging.info("Status counts → " + " | ".join(f"{k}: {v}" for k, v in status_counts.items()))
