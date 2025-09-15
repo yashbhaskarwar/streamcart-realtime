@@ -72,7 +72,7 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None,) -> tuple[int, int, Decimal, Counter, Counter]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None,limit: int | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -89,6 +89,8 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
 
         with path.open("r", encoding="utf-8") as f:
             for i, line in enumerate(f, start=1):
+                if limit and ok >= limit:
+                    break
                 line = line.strip()
                 if not line:
                     continue
@@ -162,6 +164,11 @@ def main():
     help="Comma-separated statuses to include (e.g. DELIVERED,SHIPPED). "
          "Allowed: PLACED,CONFIRMED,SHIPPED,DELIVERED,CANCELLED",
    )
+    parser.add_argument(
+    "--limit",
+    type=int,
+    help="Validate only the first N events from the log file",
+    )
 
     args = parser.parse_args()
 
@@ -183,7 +190,7 @@ def main():
         raise FileNotFoundError(f"File not found: {path}")
 
     ok, err, total, status_counts, type_counts = validate_file(
-    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter
+    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit,
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
