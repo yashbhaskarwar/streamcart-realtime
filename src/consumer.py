@@ -114,6 +114,8 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 except Exception as e:
                     err += 1
                     logging.error(f"[line {i}] invalid event: {e}")
+                if i % 100 == 0:
+                    logging.info(f"Processed {i} lines so far → valid: {ok}, errors: {err}")
 
         if to_postgres and conn:
             conn.commit()
