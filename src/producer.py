@@ -7,13 +7,13 @@ from decimal import Decimal
 
 fake = Faker()
 
-def make_order_event() -> dict:
+def make_order_event(forced_currency: str | None = None) -> dict:
     order_id = f"ord_{uuid.uuid4().hex[:8]}"
     customer_id = f"cus_{fake.random_number(digits=4)}"
     status = random.choice(["PLACED","CONFIRMED","SHIPPED","DELIVERED"])
     evt_type = random.choice(["order_created","order_updated"])
     amount = Decimal(str(round(random.uniform(5, 500), 2)))
-    currency = random.choice(["USD","EUR","GBP","INR"]) or "USD"
+    currency = forced_currency or random.choice(["USD", "EUR", "GBP", "INR"])
     items = random.randint(1, 5)
     evt = OrderEvent(
         event_type=evt_type,
@@ -31,7 +31,15 @@ def main():
     parser = argparse.ArgumentParser(description="Generate fake order events")
     parser.add_argument("--count", type=int, default=3, help="number of events to generate")
     parser.add_argument("--seed", type=int, help="random seed for reproducible events") # For reproducible output
+    parser.add_argument(
+    "--currency",
+    type=str,
+    help="Force all orders to use this currency (e.g., USD, EUR, INR)",
+    )
+
     args = parser.parse_args()
+
+    forced_currency = args.currency.upper() if args.currency else None
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -44,7 +52,7 @@ def main():
     log_file = "data/orders_log.jsonl"
 
     for _ in range(args.count):
-        evt = make_order_event()
+        evt = make_order_event(forced_currency=forced_currency)
         line = json.dumps(evt, default=str)
 
         # print to stdout
