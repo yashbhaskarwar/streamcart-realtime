@@ -171,6 +171,11 @@ def main():
     type=int,
     help="Validate only the first N events from the log file",
     )
+    parser.add_argument(
+    "--summary",
+    action="store_true",
+    help="If set, export a JSON summary report with totals and counts"
+    )
 
     args = parser.parse_args()
 
@@ -205,6 +210,21 @@ def main():
         logging.info("📦 Inserted valid events into Postgres.")
     if args.to_csv:
         logging.info("📝 Wrote CSV to data/validated_orders.csv")
+
+    if args.summary:
+        summary = {
+            "valid_events": ok,
+            "errors": err,
+            "total_amount": float(total),  # Decimal → float for JSON
+            "avg_amount": float(avg),
+            "status_counts": dict(status_counts),
+            "event_type_counts": dict(type_counts),
+        }
+        out = Path("data/summary.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        logging.info(f"📊 Wrote summary report to {out}")
 
 if __name__ == "__main__":
         main()
