@@ -176,6 +176,11 @@ def main():
     action="store_true",
     help="If set, export a JSON summary report with totals and counts"
     )
+    parser.add_argument(
+    "--summary-csv",
+    action="store_true",
+    help="If set, export a CSV summary report with totals and counts"
+    )
 
     args = parser.parse_args()
 
@@ -201,15 +206,15 @@ def main():
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
-    logging.info(f"✅ {ok} events valid | ❌ {err} errors | 💵 total: {total} | avg: {avg}{label}")
+    logging.info(f"✅ {ok} events valid | ❌ {err} errors | total: {total} | avg: {avg}{label}")
     if status_counts:
         logging.info("Status counts → " + " | ".join(f"{k}: {v}" for k, v in status_counts.items()))
     if type_counts:
         logging.info("Event types → " + " | ".join(f"{k}: {v}" for k, v in type_counts.items()))
     if args.to_postgres:
-        logging.info("📦 Inserted valid events into Postgres.")
+        logging.info("Inserted valid events into Postgres.")
     if args.to_csv:
-        logging.info("📝 Wrote CSV to data/validated_orders.csv")
+        logging.info("Wrote CSV to data/validated_orders.csv")
 
     if args.summary:
         summary = {
@@ -224,7 +229,27 @@ def main():
         out.parent.mkdir(parents=True, exist_ok=True)
         with out.open("w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
-        logging.info(f"📊 Wrote summary report to {out}")
+        logging.info(f"Wrote summary report to {out}")
+
+    if args.summary_csv:
+        out = Path("data/summary.csv")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["valid_events", "errors", "total_amount", "avg_amount"])
+            writer.writerow([ok, err, float(total), float(avg)])
+
+            writer.writerow([])
+            writer.writerow(["Status", "Count"])
+            for k, v in status_counts.items():
+                writer.writerow([k, v])
+
+            writer.writerow([])
+            writer.writerow(["Event Type", "Count"])
+            for k, v in type_counts.items():
+                writer.writerow([k, v])
+
+        logging.info(f"Wrote summary report to {out}")
 
 if __name__ == "__main__":
         main()
