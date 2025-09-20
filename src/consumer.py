@@ -72,7 +72,7 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None,limit: int | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -116,6 +116,8 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                     logging.error(f"[line {i}] invalid event: {e}")
                 if i % 100 == 0:
                     logging.info(f"Processed {i} lines so far → valid: {ok}, errors: {err}")
+                if currency_filter and evt.currency.upper() not in currency_filter:
+                    continue
 
         if to_postgres and conn:
             conn.commit()
@@ -181,8 +183,19 @@ def main():
     action="store_true",
     help="If set, export a CSV summary report with totals and counts"
     )
+    parser.add_argument(
+    "--currency",
+    type=str,
+    help="Comma-separated currencies to include (e.g. USD,EUR,INR)"
+    )
 
     args = parser.parse_args()
+
+    currency_filter: set[str] | None = None
+    if args.currency:
+        chosen = {c.strip().upper() for c in args.currency.split(",") if c.strip()}
+        currency_filter = chosen
+
 
     allowed_statuses = {"PLACED","CONFIRMED","SHIPPED","DELIVERED","CANCELLED"}
     status_filter: set[str] | None = None
