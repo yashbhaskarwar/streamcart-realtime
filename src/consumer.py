@@ -81,6 +81,9 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
     rows: list[dict] = []
     conn = None
     cur = None
+    min_amt: Decimal | None = None
+    max_amt: Decimal | None = None
+
     try:
         if to_postgres:
             conn = pg_connect()
@@ -103,6 +106,11 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                     # sum amounts 
                     amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
                     total += amt
+                    # new lines for min/max
+                    if min_amt is None or amt < min_amt:
+                        min_amt = amt
+                    if max_amt is None or amt > max_amt:
+                        max_amt = amt
                     status_counts[evt.status] += 1
                     type_counts[evt.event_type] += 1
                     d = evt.model_dump()
@@ -137,7 +145,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 w.writeheader()
                 w.writerows(rows)
 
-    return ok, err, total, status_counts, type_counts
+    return ok, err, total, status_counts, type_counts, min_amt, max_amt
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -214,7 +222,7 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts = validate_file(
+    ok, err, total, status_counts, type_counts, min_amt, max_amt = validate_file(
     path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit,
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
@@ -228,7 +236,7 @@ def main():
         logging.info("Inserted valid events into Postgres.")
     if args.to_csv:
         logging.info("Wrote CSV to data/validated_orders.csv")
-
+    logging.info(f"💵 min: {min_amt} | max: {max_amt}")
     if args.summary:
         summary = {
             "valid_events": ok,
