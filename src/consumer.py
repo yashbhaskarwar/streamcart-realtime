@@ -72,7 +72,8 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,check_duplicates: bool = False,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,check_duplicates: bool = False,min_amount: Decimal | None = None,
+    max_amount: Decimal | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -119,6 +120,11 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                         min_amt = amt
                     if max_amt is None or amt > max_amt:
                         max_amt = amt
+                    if min_amount is not None and amt < min_amount:
+                        continue
+                    if max_amount is not None and amt > max_amount:
+                        continue
+
                     status_counts[evt.status] += 1
                     type_counts[evt.event_type] += 1
                     d = evt.model_dump()
@@ -209,6 +215,17 @@ def main():
     action="store_true",
     help="If set, warn when duplicate event_ids are found"
     )
+    parser.add_argument(
+    "--min-amount",
+    type=float,
+    help="Only include events with amount >= this value"
+    )
+    parser.add_argument(
+    "--max-amount",
+    type=float,
+    help="Only include events with amount <= this value"
+    )
+
 
     args = parser.parse_args()
 
@@ -217,6 +234,8 @@ def main():
         chosen = {c.strip().upper() for c in args.currency.split(",") if c.strip()}
         currency_filter = chosen
 
+    min_amount: Decimal | None = Decimal(str(args.min_amount)) if args.min_amount is not None else None
+    max_amount: Decimal | None = Decimal(str(args.max_amount)) if args.max_amount is not None else None
 
     allowed_statuses = {"PLACED","CONFIRMED","SHIPPED","DELIVERED","CANCELLED"}
     status_filter: set[str] | None = None
@@ -236,7 +255,8 @@ def main():
         raise FileNotFoundError(f"File not found: {path}")
 
     ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates = validate_file(
-    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit, check_duplicates=args.check_duplicates,
+    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit, check_duplicates=args.check_duplicates,min_amount=min_amount,
+    max_amount=max_amount,
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
