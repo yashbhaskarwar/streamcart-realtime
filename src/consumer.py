@@ -72,7 +72,7 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,check_duplicates: bool = False,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
     """Validate all JSONL events"""
     ok, err = 0, 0
     total = Decimal("0")
@@ -83,6 +83,8 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
     cur = None
     min_amt: Decimal | None = None
     max_amt: Decimal | None = None
+    seen_ids: set[str] = set()
+    duplicates: int = 0
 
     try:
         if to_postgres:
@@ -100,6 +102,12 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 try:
                     payload = json.loads(line)
                     evt = validate_event(payload)
+                    if check_duplicates:
+                        if evt.event_id in seen_ids:
+                            duplicates += 1
+                            logging.warning(f"⚠️ Duplicate event_id found: {evt.event_id} (line {i})")
+                        else:
+                            seen_ids.add(evt.event_id)
                     if status_filter and evt.status not in status_filter:
                         continue
                     ok += 1
@@ -145,7 +153,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 w.writeheader()
                 w.writerows(rows)
 
-    return ok, err, total, status_counts, type_counts, min_amt, max_amt
+    return ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -196,6 +204,11 @@ def main():
     type=str,
     help="Comma-separated currencies to include (e.g. USD,EUR,INR)"
     )
+    parser.add_argument(
+    "--check-duplicates",
+    action="store_true",
+    help="If set, warn when duplicate event_ids are found"
+    )
 
     args = parser.parse_args()
 
@@ -222,8 +235,8 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts, min_amt, max_amt = validate_file(
-    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit,
+    ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates = validate_file(
+    path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit, check_duplicates=args.check_duplicates,
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
@@ -271,6 +284,9 @@ def main():
                 writer.writerow([k, v])
 
         logging.info(f"Wrote summary report to {out}")
+
+    if args.check_duplicates:
+        logging.info(f"🔍 Found {duplicates} duplicate event_ids")
 
 if __name__ == "__main__":
         main()
