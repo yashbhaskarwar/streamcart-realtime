@@ -72,7 +72,10 @@ def _to_db_dict(evt: OrderEvent) -> dict:
         d["amount"] = Decimal(d["amount"])
     return d
 
-def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,check_duplicates: bool = False,min_amount: Decimal | None = None,
+from collections import defaultdict
+group_totals: dict[str, Decimal] = defaultdict(Decimal)
+
+def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, group_by: str | None = None, status_filter: Optional[set[str]] = None, currency_filter: Optional[set[str]] = None, limit: int | None = None,check_duplicates: bool = False,min_amount: Decimal | None = None,
     max_amount: Decimal | None = None,) -> tuple[int, int, Decimal, Counter, Counter,int | None, int | None, int]:
     """Validate all JSONL events"""
     ok, err = 0, 0
@@ -115,6 +118,11 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                     # sum amounts 
                     amt = evt.amount if isinstance(evt.amount, Decimal) else Decimal(str(evt.amount))
                     total += amt
+                    # group totals by chosen field
+                    if group_by == "category":
+                        group_key = getattr(evt, "category", None)
+                        if group_key:
+                            group_totals[group_key] += amt
                     # new lines for min/max
                     if min_amt is None or amt < min_amt:
                         min_amt = amt
@@ -159,7 +167,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, s
                 w.writeheader()
                 w.writerows(rows)
 
-    return ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates
+    return ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates, group_totals
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
@@ -225,7 +233,11 @@ def main():
     type=float,
     help="Only include events with amount <= this value"
     )
-
+    parser.add_argument(
+    "--group-by",
+    type=str,
+    help="Group totals by the given field"
+    )
 
     args = parser.parse_args()
 
@@ -254,13 +266,13 @@ def main():
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates = validate_file(
+    ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates, group_totals = validate_file(
     path, to_postgres=args.to_postgres, to_csv=args.to_csv, status_filter=status_filter, limit=args.limit, check_duplicates=args.check_duplicates,min_amount=min_amount,
-    max_amount=max_amount,
+    max_amount=max_amount, group_by=args.group_by,
     )
     avg = (total / ok).quantize(Decimal("0.01")) if ok else Decimal("0.00")
     label = f" (status in {','.join(sorted(status_filter))})" if status_filter else ""
-    logging.info(f"✅ {ok} events valid | ❌ {err} errors | total: {total} | avg: {avg}{label}")
+    logging.info(f"{ok} events valid | {err} errors | total: {total} | avg: {avg}{label}")
     if status_counts:
         logging.info("Status counts → " + " | ".join(f"{k}: {v}" for k, v in status_counts.items()))
     if type_counts:
@@ -307,6 +319,10 @@ def main():
 
     if args.check_duplicates:
         logging.info(f"🔍 Found {duplicates} duplicate event_ids")
+    if args.group_by and group_totals:
+        formatted = " | ".join(f"{k}: {v:.2f}" for k, v in group_totals.items())
+        logging.info(f"📊 Totals by {args.group_by} → {formatted}")
+
 
 if __name__ == "__main__":
         main()
