@@ -6,6 +6,7 @@ from src.common.models import OrderEvent
 from decimal import Decimal
 
 fake = Faker()
+CATEGORIES = ["electronics", "fashion", "groceries", "beauty", "sports", "books"]
 
 def make_order_event(forced_currency: str | None = None) -> dict:
     order_id = f"ord_{uuid.uuid4().hex[:8]}"
@@ -15,6 +16,7 @@ def make_order_event(forced_currency: str | None = None) -> dict:
     amount = Decimal(str(round(random.uniform(5, 500), 2)))
     currency = forced_currency or random.choice(["USD", "EUR", "GBP", "INR"])
     items = random.randint(1, 5)
+    category = random.choice(CATEGORIES)
     evt = OrderEvent(
         event_type=evt_type,
         event_ts=datetime.now(timezone.utc),
@@ -24,6 +26,7 @@ def make_order_event(forced_currency: str | None = None) -> dict:
         amount=amount,
         currency=currency,
         items_count=items,
+        category=category,
     )
     return json.loads(evt.model_dump_json())
 

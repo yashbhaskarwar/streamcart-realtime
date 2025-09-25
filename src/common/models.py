@@ -17,6 +17,7 @@ class OrderEvent(BaseModel):
     amount: Decimal
     currency: Literal["USD","EUR","GBP","INR"]
     items_count: int
+    category: str
 
     @field_validator("amount")
     @classmethod
