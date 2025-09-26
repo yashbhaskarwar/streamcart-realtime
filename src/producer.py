@@ -39,6 +39,11 @@ def main():
     type=str,
     help="Force all orders to use this currency (e.g., USD, EUR, INR)",
     )
+    parser.add_argument(
+    "--overwrite",
+    action="store_true",
+    help="If set, replace existing data/orders_log.jsonl instead of appending"
+    )
 
     args = parser.parse_args()
 
@@ -54,16 +59,18 @@ def main():
 
     log_file = "data/orders_log.jsonl"
 
+    # overwrite or append
+    mode = "w" if args.overwrite else "a"
+    if args.overwrite:
+        print(f"[INFO] Overwriting existing log file: {log_file}")
+
     for _ in range(args.count):
         evt = make_order_event(forced_currency=forced_currency)
         line = json.dumps(evt, default=str)
-
-        # print to stdout
         print(line)
-
-        # append to log file
-        with open(log_file, "a", encoding="utf-8") as f:
+        with open(log_file, mode, encoding="utf-8") as f:
             f.write(line + "\n")
+        mode = "a"
 
     print(f"Wrote {args.count} events to {log_file}")
 
