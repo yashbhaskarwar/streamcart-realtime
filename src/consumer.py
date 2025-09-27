@@ -238,6 +238,11 @@ def main():
     type=str,
     help="Group totals by the given field"
     )
+    parser.add_argument(
+    "--detect-outliers",
+    action="store_true",
+    help="If set, detect and print events with unusually high or low amounts"
+    )
 
     args = parser.parse_args()
 
@@ -282,6 +287,35 @@ def main():
     if args.to_csv:
         logging.info("Wrote CSV to data/validated_orders.csv")
     logging.info(f"💵 min: {min_amt} | max: {max_amt}")
+    if args.detect_outliers and ok > 0:
+        # Thresholds for detecting outliers
+        lower_threshold = avg * Decimal("0.5")
+        upper_threshold = avg * Decimal("2")
+
+        logging.info(
+            f"Detecting outliers (amount < {lower_threshold} or > {upper_threshold})..."
+        )
+        with path.open("r", encoding="utf-8") as f:
+            for i, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                    evt = validate_event(payload)
+                    amt = (
+                        evt.amount
+                        if isinstance(evt.amount, Decimal)
+                        else Decimal(str(evt.amount))
+                    )
+                    if amt < lower_threshold or amt > upper_threshold:
+                        logging.warning(
+                            f"⚠️ Outlier → order_id={evt.order_id} | amount={amt} | line={i}"
+                        )
+                except Exception:
+                    # ignore invalid lines
+                    continue
+
     if args.summary:
         summary = {
             "valid_events": ok,
