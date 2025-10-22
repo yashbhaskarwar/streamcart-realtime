@@ -7,6 +7,8 @@ Producer generates and logs fake e-commerce order events
 Consumer validates events, prints totals, averages, status and event type counts  
 Postgres integration for storing validated events  (optional for now)
 
+## Features
+JSON summary, CSV summary, Currency filter, Amount range filter, Duplicate detection, Min/Max stats, Outlier detection, Category enrichment, Group by category & Overwrite mode
 
 ## Run locally
 ```bash
@@ -26,16 +28,13 @@ python -m src.producer --count 5
 # Generate reproducible events
 python -m src.producer --count 5 --seed 42
 
+# Overwrite previous dataset (doesnt append)
+python -m src.producer --count 50 --overwrite
+
 # Consumer
 
 # Validate events from the log file
 python -m src.consumer --file data/orders_log.jsonl
-
-# Show database schema (Postgres)
-python -m src.consumer --show-schema
-
-# Validate and insert into Postgres
-python -m src.consumer --file data/orders_log.jsonl --to-postgres
 
 # Validate and export to CSV
 python -m src.consumer --file data/orders_log.jsonl --to-csv
@@ -43,11 +42,33 @@ python -m src.consumer --file data/orders_log.jsonl --to-csv
 # Filter by one or more statuses
 python -m src.consumer --file data/orders_log.jsonl --status DELIVERED,SHIPPED
 
+# Filter by currency
+python -m src.consumer --file data/orders_log.jsonl --currency USD,INR
+
+# Filter by amount range
+python -m src.consumer --file data/orders_log.jsonl --min-amount 50 --max-amount 300
+
+# Detect duplicates
+python -m src.consumer --file data/orders_log.jsonl --check-duplicates
+
+# Detect outliers
+python -m src.consumer --file data/orders_log.jsonl --detect-outliers
+
+# Group totals by category
+python -m src.consumer --file data/orders_log.jsonl --group-by category
+
+# Export summaries
+python -m src.consumer --file data/orders_log.jsonl --summary
+python -m src.consumer --file data/orders_log.jsonl --summary-csv
+
 ## Run tests
 pytest -q
 
 # Postgres client required
 pip install psycopg2-binary
+
+# Show table schema
+python -m src.consumer --show-schema
 
 # Validate and insert to Postgres
 python -m src.consumer --file data/orders_log.jsonl --to-postgres
