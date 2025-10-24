@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from faker import Faker
 from src.common.models import OrderEvent
 from decimal import Decimal
+from confluent_kafka import Producer as KafkaProducer
 
 fake = Faker()
 CATEGORIES = ["electronics", "fashion", "groceries", "beauty", "sports", "books"]
@@ -44,6 +45,11 @@ def main():
     action="store_true",
     help="If set, replace existing data/orders_log.jsonl instead of appending"
     )
+    parser.add_argument(
+    "--to-redpanda",
+    action="store_true",
+    help="If set, publish events to a Redpanda topic (in addition to writing to file)"
+    )
 
     args = parser.parse_args()
 
@@ -64,6 +70,11 @@ def main():
     if args.overwrite:
         print(f"[INFO] Overwriting existing log file: {log_file}")
 
+    kafka_producer = None
+    if args.to_redpanda:
+        kafka_producer = KafkaProducer({"bootstrap.servers": "localhost:9092"})
+        topic = "orders"
+
     for _ in range(args.count):
         evt = make_order_event(forced_currency=forced_currency)
         line = json.dumps(evt, default=str)
@@ -71,6 +82,13 @@ def main():
         with open(log_file, mode, encoding="utf-8") as f:
             f.write(line + "\n")
         mode = "a"
+    
+    # publish to Redpanda
+    if kafka_producer:
+        kafka_producer.produce(topic, value=line.encode("utf-8"))
+        kafka_producer.flush(0.1)
+    if kafka_producer:
+        kafka_producer.flush() 
 
     print(f"Wrote {args.count} events to {log_file}")
 
