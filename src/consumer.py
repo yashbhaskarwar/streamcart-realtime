@@ -13,6 +13,7 @@ import logging
 from src.common.models import OrderEvent
 from collections import Counter
 from typing import Optional
+from confluent_kafka import Consumer as KafkaConsumer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -243,8 +244,52 @@ def main():
     action="store_true",
     help="If set, detect and print events with unusually high or low amounts"
     )
+    parser.add_argument(
+    "--from-redpanda",
+    action="store_true",
+    help="Stream events from a Redpanda topic instead of reading from a file"
+    )
 
     args = parser.parse_args()
+
+    kafka_consumer = None
+    if args.from_redpanda:
+        logging.info("📡 Streaming from Redpanda...")
+
+        kafka_consumer = KafkaConsumer({
+            "bootstrap.servers": "localhost:9092",
+            "group.id": "streamcart-consumer-dev",
+            "auto.offset.reset": "earliest",
+        })
+        kafka_consumer.subscribe(["orders"])
+
+        count = 0
+        while True:
+            msg = kafka_consumer.poll(1.0)
+            if msg is None:
+                continue
+            if msg.error():
+                logging.error(f"Kafka error: {msg.error()}")
+                continue
+
+            payload = json.loads(msg.value().decode("utf-8"))
+
+            # Validate event using existing validation logic
+            try:
+                evt = validate_event(payload)
+            except Exception as e:
+                logging.error(f"Invalid event from Redpanda: {e}")
+                continue
+
+            count += 1
+            logging.info(f"📥 Received event #{count}: {evt.order_id}")
+
+            # Stop when --limit is reached
+            if args.limit and count >= args.limit:
+                break
+
+        logging.info(f"Consumed {count} events from Redpanda")
+        return  
 
     currency_filter: set[str] | None = None
     if args.currency:
@@ -266,7 +311,7 @@ def main():
     if args.show_schema:
         print(DDL.strip())
         raise SystemExit(0)
-
+    
     path = Path(args.file)
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
@@ -355,7 +400,7 @@ def main():
         logging.info(f"🔍 Found {duplicates} duplicate event_ids")
     if args.group_by and group_totals:
         formatted = " | ".join(f"{k}: {v:.2f}" for k, v in group_totals.items())
-        logging.info(f"📊 Totals by {args.group_by} → {formatted}")
+        logging.info(f"Totals by {args.group_by} → {formatted}")
 
 
 if __name__ == "__main__":
