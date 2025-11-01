@@ -249,12 +249,17 @@ def main():
     action="store_true",
     help="Stream events from a Redpanda topic instead of reading from a file"
     )
+    parser.add_argument(
+    "--print-events",
+    action="store_true",
+    help="Print full event payloads when streaming"
+    )
 
     args = parser.parse_args()
 
     kafka_consumer = None
     if args.from_redpanda:
-        logging.info("📡 Streaming from Redpanda...")
+        logging.info("Streaming from Redpanda...")
 
         kafka_consumer = KafkaConsumer({
             "bootstrap.servers": "localhost:9092",
@@ -282,7 +287,11 @@ def main():
                 continue
 
             count += 1
-            logging.info(f"📥 Received event #{count}: {evt.order_id}")
+            if args.print_events:
+                logging.info(f"Event #{count}: {json.dumps(payload)}")
+            else:
+                logging.info(f"Received event #{count}: {evt.order_id}")
+
 
             # Stop when --limit is reached
             if args.limit and count >= args.limit:
