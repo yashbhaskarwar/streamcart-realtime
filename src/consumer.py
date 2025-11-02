@@ -269,36 +269,41 @@ def main():
         kafka_consumer.subscribe(["orders"])
 
         count = 0
-        while True:
-            msg = kafka_consumer.poll(1.0)
-            if msg is None:
-                continue
-            if msg.error():
-                logging.error(f"Kafka error: {msg.error()}")
-                continue
+        try:
+            while True:
+                msg = kafka_consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    logging.error(f"Kafka error: {msg.error()}")
+                    continue
 
-            payload = json.loads(msg.value().decode("utf-8"))
+                payload = json.loads(msg.value().decode("utf-8"))
+                try:
+                    evt = validate_event(payload)
+                except Exception as e:
+                    logging.error(f"Invalid event from Redpanda: {e}")
+                    continue
 
-            # Validate event using existing validation logic
+                count += 1
+                if args.print_events:
+                    logging.info(f"📥 Event #{count}: {json.dumps(payload)}")
+                else:
+                    logging.info(f"📥 Received event #{count}: {evt.order_id}")
+
+                if args.limit and count >= args.limit:
+                    break
+
+        except KeyboardInterrupt:
+            logging.info("Stopping")
+
+        finally:
             try:
-                evt = validate_event(payload)
-            except Exception as e:
-                logging.error(f"Invalid event from Redpanda: {e}")
-                continue
-
-            count += 1
-            if args.print_events:
-                logging.info(f"Event #{count}: {json.dumps(payload)}")
-            else:
-                logging.info(f"Received event #{count}: {evt.order_id}")
-
-
-            # Stop when --limit is reached
-            if args.limit and count >= args.limit:
-                break
-
-        logging.info(f"Consumed {count} events from Redpanda")
-        return  
+                kafka_consumer.close()
+            except Exception:
+                pass
+            logging.info(f"Consumed {count} events from Redpanda")
+            return
 
     currency_filter: set[str] | None = None
     if args.currency:
