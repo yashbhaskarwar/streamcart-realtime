@@ -260,6 +260,12 @@ def main():
     default="streamcart-consumer",
     help="Kafka consumer group id (use new value to re-read messages)"
     )
+    parser.add_argument(
+    "--topic",
+    type=str,
+    default="orders",
+    help="Kafka topic to consume from (default: orders)"
+    )
 
     args = parser.parse_args()
 
@@ -272,7 +278,7 @@ def main():
             "group.id": args.group_id,
             "auto.offset.reset": "earliest",
         })
-        kafka_consumer.subscribe(["orders"])
+        kafka_consumer.subscribe([args.topic])
 
         count = 0
         try:
