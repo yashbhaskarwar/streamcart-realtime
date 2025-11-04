@@ -254,6 +254,12 @@ def main():
     action="store_true",
     help="Print full event payloads when streaming"
     )
+    parser.add_argument(
+    "--group-id",
+    type=str,
+    default="streamcart-consumer",
+    help="Kafka consumer group id (use new value to re-read messages)"
+    )
 
     args = parser.parse_args()
 
@@ -263,7 +269,7 @@ def main():
 
         kafka_consumer = KafkaConsumer({
             "bootstrap.servers": "localhost:9092",
-            "group.id": "streamcart-consumer-dev",
+            "group.id": args.group_id,
             "auto.offset.reset": "earliest",
         })
         kafka_consumer.subscribe(["orders"])
