@@ -83,10 +83,10 @@ def main():
             f.write(line + "\n")
         mode = "a"
     
-    # publish to Redpanda
-    if kafka_producer:
-        kafka_producer.produce(topic, value=line.encode("utf-8"))
-        kafka_producer.flush(0.1)
+        # publish to Redpanda
+        if kafka_producer:
+            kafka_producer.produce(topic, value=line.encode("utf-8"))
+            # kafka_producer.flush(0.1)
     if kafka_producer:
         kafka_producer.flush() 
 
