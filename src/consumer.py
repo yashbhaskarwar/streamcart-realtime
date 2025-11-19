@@ -281,7 +281,20 @@ def main():
         kafka_consumer.subscribe([args.topic])
 
         count = 0
+        inserted = 0
+        conn = None
+        cur = None
+
         try:
+            if args.to_postgres:
+                logging.info(
+                    f"Connecting to Postgres at {PG_HOST}:{PG_PORT}, db={PG_DB} as {PG_USER}"
+                )
+                conn = pg_connect()
+                ensure_db(conn)
+                cur = conn.cursor()
+                logging.info("Postgres connection ready, starting streaming upsert")
+
             while True:
                 msg = kafka_consumer.poll(1.0)
                 if msg is None:
@@ -298,6 +311,16 @@ def main():
                     continue
 
                 count += 1
+
+                if args.to_postgres and cur:
+                    try:
+                        cur.execute(UPSERT, _to_db_dict(evt))
+                        inserted += 1
+                    except Exception as e:
+                        logging.error(
+                            f"Postgres insert failed for event {evt.event_id}: {e}"
+                        )
+
                 if args.print_events:
                     logging.info(f"📥 Event #{count}: {json.dumps(payload)}")
                 else:
@@ -306,16 +329,26 @@ def main():
                 if args.limit and count >= args.limit:
                     break
 
+            if args.to_postgres and conn:
+                conn.commit()
+
         except KeyboardInterrupt:
-            logging.info("Stopping")
+            logging.info("Stopping stream (KeyboardInterrupt)")
 
         finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
             try:
                 kafka_consumer.close()
             except Exception:
                 pass
-            logging.info(f"Consumed {count} events from Redpanda")
-            return
+            logging.info(
+                f"Consumed {count} events from Redpanda, "
+                f"inserted {inserted} into Postgres"
+            )
+        return
 
     currency_filter: set[str] | None = None
     if args.currency:
