@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 from decimal import Decimal 
 import psycopg2
 import csv
 import logging
+import time
 
 from src.common.models import OrderEvent
 from collections import Counter
@@ -110,7 +110,7 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, g
                     if check_duplicates:
                         if evt.event_id in seen_ids:
                             duplicates += 1
-                            logging.warning(f"⚠️ Duplicate event_id found: {evt.event_id} (line {i})")
+                            logging.warning(f"Duplicate event_id found: {evt.event_id} (line {i})")
                         else:
                             seen_ids.add(evt.event_id)
                     if status_filter and evt.status not in status_filter:
@@ -266,6 +266,12 @@ def main():
     default="orders",
     help="Kafka topic to consume from (default: orders)"
     )
+    parser.add_argument(
+    "--metrics-every",
+    type=int,
+    default=100,
+    help="Log throughput every N events in streaming mode"
+)
 
     args = parser.parse_args()
 
@@ -282,6 +288,13 @@ def main():
 
         count = 0
         inserted = 0
+
+        # Performance metrics 
+        start_ts = time.perf_counter()
+        last_report_ts = start_ts
+        last_report_count = 0
+        report_every = args.metrics_every  
+
         conn = None
         cur = None
 
@@ -322,9 +335,31 @@ def main():
                         )
 
                 if args.print_events:
-                    logging.info(f"📥 Event #{count}: {json.dumps(payload)}")
+                    logging.info(f"Event #{count}: {json.dumps(payload)}")
                 else:
-                    logging.info(f"📥 Received event #{count}: {evt.order_id}")
+                    logging.info(f"Received event #{count}: {evt.order_id}")
+
+                # Metrics every N events 
+                if count % report_every == 0:
+                    now = time.perf_counter()
+                    total_elapsed = now - start_ts
+                    window_elapsed = now - last_report_ts
+
+                    avg_rate = count / total_elapsed if total_elapsed > 0 else 0.0
+                    window_rate = (
+                        (count - last_report_count) / window_elapsed
+                        if window_elapsed > 0
+                        else 0.0
+                    )
+
+                    logging.info(
+                        f"Metrics: total={count} | avg={avg_rate:.2f} ev/s | "
+                        f"last{report_every}={window_rate:.2f} ev/s | "
+                        f"elapsed={total_elapsed:.2f}s"
+                    )
+
+                    last_report_ts = now
+                    last_report_count = count
 
                 if args.limit and count >= args.limit:
                     break
@@ -333,7 +368,7 @@ def main():
                 conn.commit()
 
         except KeyboardInterrupt:
-            logging.info("Stopping stream (KeyboardInterrupt)")
+            logging.info("Stopping stream")
 
         finally:
             if cur:
@@ -390,7 +425,7 @@ def main():
         logging.info("Inserted valid events into Postgres.")
     if args.to_csv:
         logging.info("Wrote CSV to data/validated_orders.csv")
-    logging.info(f"💵 min: {min_amt} | max: {max_amt}")
+    logging.info(f"min: {min_amt} | max: {max_amt}")
     if args.detect_outliers and ok > 0:
         # Thresholds for detecting outliers
         lower_threshold = avg * Decimal("0.5")
@@ -414,7 +449,7 @@ def main():
                     )
                     if amt < lower_threshold or amt > upper_threshold:
                         logging.warning(
-                            f"⚠️ Outlier → order_id={evt.order_id} | amount={amt} | line={i}"
+                            f"Outlier → order_id={evt.order_id} | amount={amt} | line={i}"
                         )
                 except Exception:
                     # ignore invalid lines
@@ -424,7 +459,7 @@ def main():
         summary = {
             "valid_events": ok,
             "errors": err,
-            "total_amount": float(total),  # Decimal → float for JSON
+            "total_amount": float(total),  
             "avg_amount": float(avg),
             "status_counts": dict(status_counts),
             "event_type_counts": dict(type_counts),
@@ -456,7 +491,7 @@ def main():
         logging.info(f"Wrote summary report to {out}")
 
     if args.check_duplicates:
-        logging.info(f"🔍 Found {duplicates} duplicate event_ids")
+        logging.info(f"Found {duplicates} duplicate event_ids")
     if args.group_by and group_totals:
         formatted = " | ".join(f"{k}: {v:.2f}" for k, v in group_totals.items())
         logging.info(f"Totals by {args.group_by} → {formatted}")
