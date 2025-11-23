@@ -4,7 +4,8 @@ import argparse
 import json
 import os
 from pathlib import Path
-from decimal import Decimal 
+from decimal import Decimal
+import sys 
 import psycopg2
 import csv
 import logging
@@ -14,6 +15,7 @@ from src.common.models import OrderEvent
 from collections import Counter
 from typing import Optional
 from confluent_kafka import Consumer as KafkaConsumer
+from confluent_kafka.admin import AdminClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -170,6 +172,49 @@ def validate_file(path: Path, to_postgres: bool = False, to_csv: bool = False, g
 
     return ok, err, total, status_counts, type_counts, min_amt, max_amt, duplicates, group_totals
 
+def check_postgres() -> tuple[bool, str]:
+    try:
+        conn = pg_connect()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        return True, f"Postgres OK at {PG_HOST}:{PG_PORT} db={PG_DB}"
+    except Exception as e:
+        return False, f"Postgres FAIL at {PG_HOST}:{PG_PORT} db={PG_DB} error={e}"
+
+
+def check_redpanda(topic: str) -> tuple[bool, str]:
+    try:
+        admin = AdminClient({"bootstrap.servers": "localhost:9092"})
+        md = admin.list_topics(timeout=5)
+        topics = set(md.topics.keys())
+        if topic in topics:
+            return True, f"Redpanda OK at localhost:9092 topic={topic}"
+        return True, f"Redpanda OK at localhost:9092 but topic={topic} not found yet"
+    except Exception as e:
+        return False, f"Redpanda FAIL at localhost:9092 error={e}"
+    
+def require_healthy(topic: str, need_redpanda: bool, need_postgres: bool) -> None:
+    ok_all = True
+
+    if need_redpanda:
+        ok_rp, msg_rp = check_redpanda(topic)
+        logging.info(msg_rp)
+        ok_all = ok_all and ok_rp
+
+    if need_postgres:
+        ok_pg, msg_pg = check_postgres()
+        logging.info(msg_pg)
+        ok_all = ok_all and ok_pg
+
+    if not ok_all:
+        logging.error("Healthcheck FAILED (Stopping execution)")
+        sys.exit(1)
+
+    logging.info("Healthcheck PASSED")
+
 def main():
     parser = argparse.ArgumentParser(description="Validate JSONL order events from a file.")
     parser.add_argument(
@@ -271,9 +316,45 @@ def main():
     type=int,
     default=100,
     help="Log throughput every N events in streaming mode"
-)
+    )
+    parser.add_argument(
+    "--healthcheck",
+    action="store_true",
+    help="Check Redpanda and Postgres connectivity, then exit"
+    )
 
     args = parser.parse_args()
+
+    if args.healthcheck:
+        ok_rp, msg_rp = check_redpanda(args.topic)
+        ok_pg, msg_pg = check_postgres()
+
+        logging.info(msg_rp)
+        logging.info(msg_pg)
+
+        if ok_rp and ok_pg:
+            logging.info("Healthcheck PASSED")
+            sys.exit(0)
+        else:
+            logging.error("Healthcheck FAILED")
+            sys.exit(1)
+
+    logging.info(
+    f"Startup config: from_redpanda={args.from_redpanda} "
+    f"to_postgres={args.to_postgres} topic={args.topic} group_id={args.group_id} "
+    f"pg_host={PG_HOST} pg_port={PG_PORT} pg_db={PG_DB}"
+    )
+
+        # ---- automatic healthcheck for normal runs ----
+    need_redpanda = args.from_redpanda
+    need_postgres = args.to_postgres
+
+    if need_redpanda or need_postgres:
+        require_healthy(
+            topic=args.topic,
+            need_redpanda=need_redpanda,
+            need_postgres=need_postgres
+        )
 
     kafka_consumer = None
     if args.from_redpanda:
