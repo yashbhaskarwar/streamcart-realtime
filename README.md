@@ -5,6 +5,41 @@ A project that simulates a real-time e-commerce data pipeline usig Python, Redpa
 ## Overview
 The project showcases how online orders flow through a live data pipeline by covering everything from event generation to validation, logging and database storage.
 
+## Architechture
+
+                 +-------------------+
+                 |    Producer       |
+                 | (Python + Faker)  |
+                 +---------+---------+
+                           |
+                           | order events (JSON)
+                           v
+                 +---------+---------+
+                 |     Redpanda      |
+                 |   (Kafka API)     |
+                 +---------+---------+
+                           |
+                           | stream consume
+                           v
+                 +---------+---------+
+                 |    Consumer       |
+                 | (validate + stats |
+                 |  + sink)          |
+                 +----+-------+------+
+                      |       |
+        batch/file    |       | real-time sink
+                      |       |
+                      v       v
+            +---------+--+  +----------------+
+            | CSV / JSON |  |   Postgres     |
+            | summaries  |  | orders_events  |
+            +------------+  +----------------+
+
+### Modes
+
+- Batch mode: file → validate → stats → CSV/JSON/Postgres
+- Streaming mode: Redpanda → validate → stats → Postgres
+
 ## Components
 Producer <br>
 Generates and logs fake e-commerce order events <br>
@@ -16,6 +51,7 @@ Validates events, calculates totals, averages, per-status and per-type counts <b
 Exports data to CSV or Postgres <br>
 Supports multiple filters and reporting options <br>
 Includes real-time streaming mode for consuming directly from Redpanda <br>
+Throughput metrics and health checks <br>
 
 ## Features <br>
 
@@ -35,7 +71,9 @@ Includes real-time streaming mode for consuming directly from Redpanda <br>
 * --print-events to print full JSON payloads
 * --group-id to control Kafka consumer offset behavior
 * --topic to consume from any topic 
-* Postgres integration 
+* Real-time Postgres sink
+* Throughput metrics with --metrics-every
+* health checks before streaming 
 
 ## Run locally
 ```bash
@@ -90,6 +128,9 @@ python -m src.consumer --file data/orders_log.jsonl --group-by category
 # Export summaries
 python -m src.consumer --file data/orders_log.jsonl --summary
 python -m src.consumer --file data/orders_log.jsonl --summary-csv
+
+# Insert batch into Postgres
+python -m src.consumer --file data/orders_log.jsonl --to-postgres
 ```
 
 ## Streaming Mode (Redpanda)
@@ -105,6 +146,10 @@ python -m src.consumer --from-redpanda --group-id test1 --limit 5
 
 # Choose custom topic
 python -m src.consumer --from-redpanda --topic orders --limit 5
+
+# Real-time Postgres sink + metrics
+set PG_PORT=5433
+python -m src.consumer --from-redpanda --to-postgres --metrics-every 20
 ```
 ### Postgres Integration
 ```bash
