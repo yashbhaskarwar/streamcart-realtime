@@ -162,3 +162,10 @@ python -m src.consumer --show-schema
 # Validate and insert to Postgres
 python -m src.consumer --file data/orders_log.jsonl --to-postgres
 ```
+
+## Dashboard
+Streamlit dashboard to show live order stats from Postgres.
+```bash
+set PG_PORT=5433  # for docker postgres
+streamlit run src/dashboard.py
+```
