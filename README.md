@@ -1,4 +1,4 @@
-# StreamCart Realtime 
+# StreamCart Realtime ETL System
 
 A project that simulates a real-time e-commerce data pipeline usig Python, Redpanda and Postgres.  
 
